@@ -1,0 +1,412 @@
+---
+title: "Project 1"
+author: "Zainab Saeed"
+output: html_document
+date: "2024-01-19"
+runtime: shiny
+---
+```{r echo=FALSE,message=FALSE,warning=FALSE}
+library(tidyverse)
+library(ggplot2)
+library(plotly)
+library(lubridate)
+library(scales)
+library(zoo) 
+library(scales)
+library(lubridate)
+library(shiny)
+library(dplyr)
+library(tidyr)
+```
+# Northwind Data
+```{r setup, include=FALSE}
+knitr::opts_chunk$set(echo = TRUE)
+options(scipen = 999)
+```
+
+
+```{r echo=FALSE,message=FALSE,warning=FALSE}
+df_orders <- read.csv("/Users/zainab/Downloads/northwind/orders.csv")
+df_orders_line_items <-read.csv("/Users/zainab/Downloads/northwind/orderdetails.csv")
+df_products <-read.csv("/Users/zainab/Downloads/northwind/products.csv")
+df_category <-read.csv("/Users/zainab/Downloads/northwind/categories.csv")
+df_employes <-read.csv("/Users/zainab/Downloads/northwind/employees.csv")
+df_customer <- read.csv("/Users/zainab/Downloads/northwind/customers.csv")
+df_region <- read.csv("/Users/zainab/Downloads/northwind/region.csv")
+df_shippers <- read.csv("/Users/zainab/Downloads/northwind/shippers.csv")
+df_suppliers <- read.csv("/Users/zainab/Downloads/northwind/suppliers.csv")
+df_teritories<- read.csv("/Users/zainab/Downloads/northwind/territories.csv")
+df_emp_terr<- read.csv("/Users/zainab/Downloads/northwind/employeeterritories.csv")
+```
+ 
+## Category
+### What is the average Order Value for each category?
+```{r warning=FALSE}
+result <- df_orders_line_items  |>
+  dplyr::full_join(df_products,
+                   by = c("ProductID" = "ProductID")) |>
+  dplyr::full_join(df_category,
+                   by = c("CategoryID" = "CategoryID")) |>
+  dplyr::mutate(subtotal = UnitPrice.x * Quantity * (1 - Discount)) |>
+  dplyr::group_by(OrderID, CategoryName) |>
+  dplyr::summarise(totalsale = sum(subtotal), .groups = 'drop') |>
+  dplyr::ungroup() |>
+  dplyr::group_by(CategoryName) |>
+  dplyr::summarise(avgsale = mean(totalsale), .groups = 'drop')
+print(result)
+# Create ggplot object
+ggplot_obj <- ggplot(result, aes(x = CategoryName, y = avgsale, fill = CategoryName)) +
+  geom_col() +
+  theme(axis.text.y = element_blank(), axis.title.y = element_blank()) +
+  theme_minimal()  # You can customize the theme as needed
+
+# Create plotly object and adjust size
+plotly_obj <- plotly::ggplotly(ggplot_obj, height = 400, width = 950)
+
+# Show the plotly object
+plotly_obj
+
+```
+
+### What is the Quaterly sales revenue for each Category?
+```{r}
+
+df_orders  |>
+  dplyr::select(OrderID,OrderDate,)|>
+  dplyr::full_join(df_orders_line_items|>
+                     dplyr::select( OrderID ,ProductID, UnitPrice, Quantity),
+                   by = c("OrderID" = "OrderID")) |>
+  dplyr::full_join(df_products|>
+                     dplyr::select( CategoryID ,ProductID),
+                   by = c("ProductID" = "ProductID")) |>
+  dplyr::full_join(df_category|>
+                     dplyr::select( CategoryID ,CategoryName),
+                   by = c("CategoryID" = "CategoryID")) |>
+  dplyr::mutate(subtotal = UnitPrice * Quantity,
+                Quarter = quarter(as.Date(OrderDate))) |>
+  dplyr::group_by(Quarter, CategoryName) |>
+  dplyr::summarize(total_sales = sum(subtotal))|>
+  plot_ly(x = ~Quarter, y = ~total_sales, type = 'bar', color = ~CategoryName) %>%
+  layout(title = "Total Sales by Category and Quarter",
+         xaxis = list(title = "Quarter"),
+         yaxis = list(title = "Total Sales"),
+         barmode = 'stack')
+```
+
+
+## Supplier
+### What is the total sales revenue for each Supplier?
+
+```{r warning=FALSE}
+
+supplier_revenue <- df_orders_line_items |>
+  dplyr::full_join(df_products,
+                   by = c("ProductID" = "ProductID")) |>
+  dplyr::full_join(df_suppliers,
+                   by = c("SupplierID" = "SupplierID"))|>
+  dplyr::mutate(subtotal = UnitPrice.x * Quantity * (1- Discount)) |>
+  dplyr::group_by(CompanyName)|>
+  dplyr::summarise(totalsale= sum(subtotal ,na.rm = TRUE))
+print(supplier_revenue)
+ggplot_obje <- ggplot(supplier_revenue, aes(y = CompanyName, x = totalsale, fill = CompanyName)) +
+  geom_col() +
+  theme(axis.text.y = element_blank(), axis.title.y = element_blank()) +
+  theme_minimal()  # You can customize the theme as needed
+
+# Create plotly object and adjust size
+plotly_obje <- plotly::ggplotly(ggplot_obje, height = 400, width = 950)
+
+# Show the plotly object
+plotly_obje
+```
+
+### What categories of products do different suppliers specialize in?
+```{r}
+supplier_product_categories <- df_category|>
+  dplyr::full_join(df_products,
+                   by = c("CategoryID" = "CategoryID")) |>
+  dplyr::full_join(df_suppliers,
+                   by = c("SupplierID" = "SupplierID"))
+supplier_category_counts <- supplier_product_categories %>%
+group_by(CompanyName, CategoryName) %>%
+summarise(NumProducts = n()) %>%
+arrange(CompanyName, desc(NumProducts))
+
+# Print the resulting dataset
+print(supplier_category_counts)
+interactive_plot <- ggplot(supplier_category_counts, aes(y = CompanyName, x = NumProducts, fill = CategoryName, text = paste("Category: ", CategoryName, "<br>Num Products: ", NumProducts))) +
+  geom_bar(stat = "identity", position = "stack") +
+  labs(title = "Number of Products in Each Category by Supplier",
+       x = "Number of Products",
+       y = "Supplier Name",
+       fill = "Category Name") +
+  theme_minimal()
+
+# Convert ggplot to plotly with tooltips
+interactive_plot <- ggplotly(interactive_plot, tooltip = "text")
+
+# Show the interactive plot
+interactive_plot
+```
+
+
+## Product
+### What is the yearly sales revenue for each Product?
+
+```{r warning=FALSE}
+product_revenue <- df_orders  |>
+  dplyr::select(OrderID, OrderDate) |>
+  dplyr::full_join(df_orders_line_items,
+                   by = c("OrderID" = "OrderID")) |>
+  dplyr::full_join(df_products,
+                   by = c("ProductID" = "ProductID")) |>
+  dplyr::full_join(df_category,
+                   by = c("CategoryID" = "CategoryID")) |>
+  dplyr::mutate(subtotal = UnitPrice.x * Quantity * (1 - Discount),
+                Year = lubridate::year(as.Date(OrderDate))) |>
+  dplyr::group_by(Year, ProductName, .drop = TRUE) |>
+  dplyr::summarize(total_sales = sum(subtotal), .groups = 'drop')
+print(product_revenue)
+ggplot_obj <- ggplot(product_revenue, aes(y = as.factor(Year), x = total_sales, fill = ProductName)) +
+  geom_col() +
+  theme(axis.text.y = element_blank(), axis.title.y = element_blank()) +
+  theme_minimal()  
+plotly_obj <- plotly::ggplotly(ggplot_obj, height = 400, width = 950)
+
+plotly_obj
+
+```
+### In terms of sales value, what has been our best selling top 10 product of all time?
+
+```{r warning=FALSE}
+product_sales <- df_orders_line_items  |>
+  dplyr::full_join(df_products,
+                   by = c("ProductID" = "ProductID")) |>
+  dplyr::mutate(subtotal = UnitPrice.x * Quantity * (1- Discount)) |>
+  dplyr::group_by(ProductName)|>
+  dplyr::summarise(totalsale= sum(subtotal ,na.rm = TRUE),
+                   total_quantity = sum(Quantity, na.rm = TRUE))|>
+  dplyr::arrange(desc(totalsale))
+top_10_products <- product_sales[1:10, ]
+print(top_10_products)
+```
+
+## Freight
+### how freight costs vary across different Countries.
+```{r warning=FALSE}
+country_avg_freight <- df_orders |>
+  group_by(ShipCountry) |>
+  summarise(AvgFreight = mean(Freight, na.rm = TRUE))
+
+print(country_avg_freight)
+```
+
+### Average Freight Costs Across Countries
+
+```{r warning=FALSE}
+ggplot_obj <- ggplot(country_avg_freight, aes(x = ShipCountry, y = AvgFreight)) +
+  geom_col(fill = "skyblue") +
+  theme(axis.text.y = element_blank(), axis.title.y = element_blank()) +
+  theme_minimal()  
+plotly_obj <- plotly::ggplotly(ggplot_obj, height = 400, width = 1100)
+
+plotly_obj
+
+
+```
+
+
+### Calculate the average, minimum, and maximum freight costs
+```{r warning=FALSE}
+freight_summary <- df_orders |>
+  summarise(
+    AvgFreight = mean(Freight, na.rm = TRUE),
+    MinFreight = min(Freight, na.rm = TRUE),
+    MaxFreight = max(Freight, na.rm = TRUE)
+  )
+
+# Print the result
+print(freight_summary)
+```
+### Investigate whether freight costs have changed over time. Are there trends or patterns in shipping expenses across different months, or years?
+```{r warning=FALSE}
+df_orders$OrderDate <- ymd_hms(df_orders$OrderDate)
+df_orders$Month <- format(df_orders$OrderDate, "%Y-%m")
+df_orders$Year <- format(df_orders$OrderDate, "%Y")
+
+monthly_analysis <- df_orders %>%
+  group_by(Month) %>%
+  summarise(AvgFreight = mean(Freight, na.rm = TRUE))
+print(head(monthly_analysis))
+```
+
+### Average Freight Costs Over Months
+```{r warning=FALSE}
+ggplot(monthly_analysis, aes(x = Month, y = AvgFreight, group=1)) +
+  geom_line(color = "red") +
+  geom_point(color = "red") +
+  labs(title = "Average Freight Costs Over Months",
+       x = "Month",
+       y = "Average Freight Cost") +
+  theme_minimal() +
+  scale_y_continuous(labels = scales::dollar_format()) +
+  theme(axis.text.x = element_text(angle = 45, hjust = 1))
+
+```
+
+
+```{r warning=FALSE}
+yearly_analysis <- df_orders %>%
+  group_by(Year) %>%
+  summarise(AvgFreight = mean(Freight, na.rm = TRUE))
+print(head(yearly_analysis))
+```
+
+### Average Freight Costs Over Year
+```{r warning=FALSE}
+ggplot(yearly_analysis, aes(x = Year, y = AvgFreight , group=1)) +
+  geom_line(color = "blue") +
+  geom_point(color = "blue") +
+  labs(title = "Average Freight Costs Over Year",
+       x = "Year",
+       y = "Average Freight Cost") +
+  theme_minimal() +
+  scale_y_continuous(labels = scales::dollar_format()) +
+  theme(axis.text.x = element_text(angle = 45, hjust = 1))
+```
+
+
+## Rolling Window
+## Employee
+### Explore the performance of employees or territories using rolling metrics
+
+```{r}
+df_orders$OrderDate <- as.Date(df_orders$OrderDate)
+
+employee_data <- df_employes %>%
+  full_join(df_orders, by = c("EmployeeID" = "EmployeeID")) %>%
+  full_join(df_orders_line_items, by = c("OrderID" = "OrderID")) %>%
+  mutate(subtotal = UnitPrice * Quantity * (1 - Discount))
+
+employee_sales <- employee_data %>%
+  select(OrderDate, FirstName, subtotal) %>%
+  tidyr::complete(
+    OrderDate = seq(from = min(df_orders$OrderDate), to = max(df_orders$OrderDate), by = "days"),
+    FirstName = unique(FirstName),
+    fill = list(subtotal = 0)
+  )
+
+rolling_employee_data <- employee_sales %>%
+  arrange(FirstName, OrderDate) %>%
+  group_by(FirstName) %>%
+  mutate(sales_past_30d = zoo::rollapplyr(subtotal, width = 30, FUN = sum, fill = NA, align = "right", partial = TRUE))
+
+print(rolling_employee_data)
+# Your ggplot code with OrderDate included in the text aesthetic
+gg <- ggplot(rolling_employee_data, aes(x = OrderDate, y = sales_past_30d, color = FirstName, group = FirstName, text = paste("Order Date: ", OrderDate, "<br>Sales: ", scales::dollar(sales_past_30d, digits = 3)))) +
+  geom_line() +
+  labs(title = "Rolling Past 30 Days Sales",
+       y = "Sales (in dollars)") +
+  facet_wrap(~FirstName, scales = "free_y", ncol = 2, drop = FALSE, strip.position = "bottom") +
+  theme_minimal() +
+  theme(axis.text.x = element_blank())  # Hide x-axis labels
+
+# Convert ggplot to plotly with increased size
+interactive_plot <- ggplotly(gg, tooltip = "text", height = 900, width = 900)
+
+# Print or display the interactive plot
+interactive_plot
+
+```
+## Products
+### What are the rolling past 30 days sales trends for different products?
+```{r}
+# Check for missing values in OrderDate
+if (sum(is.na(df_orders$OrderDate)) > 0) {
+  stop("Missing values in OrderDate column. Handle them appropriately.")
+}
+
+df_result <- df_orders %>%
+  full_join(df_orders_line_items %>%
+              select(OrderID, ProductID, UnitPrice, Quantity),
+            by = "OrderID") %>%
+  full_join(df_products %>%
+              select(ProductID, ProductName, CategoryID),
+            by = "ProductID") %>%
+  full_join(df_category %>%
+              select(CategoryID, CategoryName),
+            by = "CategoryID") %>%
+  mutate(subtotal = UnitPrice * Quantity) %>%
+  select(OrderDate, ProductName, subtotal) %>%
+  tidyr::complete(OrderDate = seq(from = min(df_orders$OrderDate), to = max(df_orders$OrderDate), by = "days"),ProductName = unique(ProductName),fill = list(subtotal = 0))
+
+rool_data <- df_result|>
+  arrange(ProductName ,OrderDate)|>
+  group_by(ProductName) |>
+  mutate(sales_past_30d = zoo::rollapplyr(subtotal, width = 30, FUN = sum, fill = NA, align = "right", partial = TRUE))
+print(rool_data)
+shinyApp(
+  ui = fluidPage(
+    titlePanel("Dynamic Line Plot"),
+    sidebarLayout(
+      sidebarPanel(
+        selectInput("product_selector", "Select Products:", choices = unique(rool_data$ProductName))
+      ),
+      mainPanel(
+        plotlyOutput("line_plot")
+      )
+    )
+  ),
+  server = function(input, output) {
+    # Filter data based on selected employee
+    selected_data <- reactive({
+      rool_data[rool_data$ProductName == input$product_selector, ]
+    })
+    
+    # Render the dynamic plot
+    output$line_plot <- renderPlotly({
+      plot_ly(data = selected_data(), x = ~OrderDate, y = ~sales_past_30d,
+              text = ~paste("ProductName: ", ProductName, "<br>Date: ", OrderDate, "<br>Sales: ", scales::dollar(sales_past_30d, digits = 3)),
+              type = "scatter", mode = "lines",
+              width = 1200, height = 600) %>%
+        layout(title = paste("Rolling Past 30 Days Sales for", input$product_selector),
+               xaxis = list(title = "Order Date"),
+               yaxis = list(title = "Sales (in dollars)"),
+               showlegend = TRUE,
+               hovermode = "closest",
+               width=800,
+               height= 300)
+    })
+  }
+)
+
+```
+
+### What is the proportion of sales contributed by each city within a country?
+```{r message=FALSE,warning=FALSE}
+df_total_sale <- df_orders_line_items |>
+  dplyr::full_join(df_orders, by = c("OrderID" = "OrderID")) |>
+  dplyr::mutate(subtotal = UnitPrice * Quantity * (1 - Discount)) |>
+  dplyr::group_by(ShipCity, ShipCountry) |>
+  dplyr::summarize(city_sales = sum(subtotal)) |>
+  dplyr::group_by(ShipCountry) |>
+  dplyr::mutate(country_sales = sum(city_sales)) |>
+  dplyr::mutate(p_country_sales = round(city_sales / country_sales, 2))
+print(df_total_sale)
+# Create ggplot object
+gg_plot <- ggplot(df_total_sale, aes(x = ShipCountry, y = p_country_sales, fill = ShipCity)) +
+  geom_bar(stat = "identity")
+
+# Convert to plotly
+plotly_plot <- plotly::ggplotly(gg_plot)
+
+# Modify layout to increase width
+layout(plotly_plot, width = 1200)
+
+
+```
+
+
+
+
+Note that the `echo = FALSE` parameter was added to the code chunk to prevent printing of the R code that generated the plot.
